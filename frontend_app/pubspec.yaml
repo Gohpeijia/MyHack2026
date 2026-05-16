@@ -34,6 +34,12 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  url_launcher: ^6.2.6  # This allows the app to open the phone dialer for emergencies
+  http: ^1.2.1          # This allows the Flutter app to send data to your FastAPI backend
+  shared_preferences: ^2.2.3 # (Optional but recommended) To save the login JWT token on the phone
+  firebase_core: ^4.9.0
+  firebase_database: ^12.4.1
+
 
 dev_dependencies:
   flutter_test:

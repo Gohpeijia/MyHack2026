@@ -2,27 +2,23 @@
 import os
 import jwt
 
-from fastapi.security import OAuth2PasswordBearer
-# Import your separated router
-from mapdetection import router as map_router
-from schedule import router as schedule_router
-from ai_routes import router as ai_router
-from auth import router as auth_router, SECRET_KEY, ALGORITHM
 
+from fastapi.security import OAuth2PasswordBearer
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 from typing import Optional
 
-# Rate Limiting components to prevent API bill abuse
+# Rate Limiting components
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-# Import your multi-provider fallback router
-from llm_router import call_llm
-
-
+# Import your separated routers
+from mapdetection import router as map_router
+from schedule import router as schedule_router
+from ai_routes import router as ai_router
+from contacts import router as contacts_router 
+from auth import router as auth_router, SECRET_KEY, ALGORITHM
 
 # ---------------------------------------------------------------------------
 # 1. Initialize Application & Rate Limiter
@@ -47,18 +43,17 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# 3. Mount External Routers (Map & Login Features)
+# 3. Mount External Routers
 # ---------------------------------------------------------------------------
 app.include_router(map_router)
 app.include_router(auth_router)
 app.include_router(schedule_router)
 app.include_router(ai_router)
+app.include_router(contacts_router)
 
 # ---------------------------------------------------------------------------
-# Data Models (Schemas for non-map features)
-# Note: Map payload schemas (ElderLocationPayload, etc.) are in mapdetection.py
+# Security Dependencies (Strict JWT Authentication)
 # ---------------------------------------------------------------------------
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -88,49 +83,12 @@ def require_admin_role(current_user: dict = Depends(get_current_user)):
     return current_user
 
 # ---------------------------------------------------------------------------
-# Security Dependencies (Fixes "Backend APIs with no authentication")
+# Core Endpoints (Root & Admin)
 # ---------------------------------------------------------------------------
-def get_current_user(request: Request):
-    """
-    Verifies the authorization token.
-    Prevents unauthorized access to sensitive elderly details.
-    """
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authentication credentials."
-        )
-    
-    token = auth_header.split(" ")[1]
-    # Simple hackathon token check. Integrate Firebase Auth/JWT here later.
-    if token == "malicious_user_attempting_idor":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
-    
-    return {"user_id": "verified_caregiver_or_family"}
-
-
-def require_admin_role(current_user: dict = Depends(get_current_user)):
-    """Fixes 'Admin actions callable directly with curl' security gap."""
-    if current_user.get("user_id") != "verified_admin":
-         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrative privileges required to access this endpoint."
-        )
-    return current_user
-
-# ---------------------------------------------------------------------------
-# Core Endpoints (Voice Logs & Root)
-# ---------------------------------------------------------------------------
-
 @app.get("/")
 async def root():
     return {"message": "CareOS Backend is running securely!"}
 
-
-# ---------------------------------------------------------------------------
-# Admin Protected Operations
-# ---------------------------------------------------------------------------
 @app.post("/api/admin/system/pause-pipeline")
 async def pause_detection_pipeline(admin: dict = Depends(require_admin_role)):
     """

@@ -1,99 +1,106 @@
 """
-llm_router.py — Multi-provider LLM fallback chain.
+llm_router.py — Multi-provider LLM fallback chain (Enterprise Google Cloud Edition).
 
 Priority order:
-  1. Groq          (fastest, free tier)
-  2. Cerebras      (fast inference, free tier)
-  3. OpenRouter    (multi-model gateway, free tier)
-  4. Gemini        (Google, free tier)
-
-Add your keys to .env:
-  GROQ_API_KEY=...
-  CEREBRAS_API_KEY=...
-  OPENROUTER_API_KEY=...
-  GEMINI_API_KEY=...
-
-Usage in vision_service.py:
-  from llm_router import call_llm
-
-  text = call_llm(system_prompt, user_prompt, temperature=0.2)
+  1. Gemini 2.5 Flash (Google Cloud Vertex AI)
+  2. Grok 4.20        (Google Cloud Model Garden)
+  3. Qwen 3.6         (Google Cloud Model Garden)
+  4. Groq             (Standard API fallback)
 """
 
 import os
 import time
 import requests
-from typing import Optional
 from dotenv import load_dotenv
+
+# NEW: Google Cloud Authentication
+import google.auth
+import google.auth.transport.requests
 
 load_dotenv() 
 
 # ---------------------------------------------------------------------------
-# Provider configurations
+# Google Cloud Configuration
 # ---------------------------------------------------------------------------
+GCP_PROJECT = os.getenv("GCP_PROJECT_ID", "myhack-55a43")
+GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
 
+# Vertex AI's new OpenAI-compatible endpoint!
+GCP_BASE_URL = f"https://{GCP_LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{GCP_PROJECT}/locations/{GCP_LOCATION}/endpoints/openapi/chat/completions"
+
+def get_gcp_headers(dummy_key=""):
+    """
+    Uses your firebase-adminsdk.json to generate a live, secure OAuth token.
+    This replaces the need for static API keys for Google Cloud models.
+    """
+    try:
+        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        auth_req = google.auth.transport.requests.Request()
+        credentials.refresh(auth_req)
+        return {
+            "Authorization": f"Bearer {credentials.token}",
+            "Content-Type": "application/json",
+        }
+    except Exception as e:
+        print(f"❌ Failed to generate Google Cloud Token. Check GOOGLE_APPLICATION_CREDENTIALS: {e}")
+        return {}
+
+def get_standard_headers(api_key: str):
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+# ---------------------------------------------------------------------------
+# Provider Configurations
+# ---------------------------------------------------------------------------
 PROVIDERS = [
     {
-        "name": "Groq",
+        "name": "Gemini 2.5 Flash (Google Cloud)",
+        "env_key": "GCP_PROJECT_ID", # Used just to check if GCP is configured
+        "url": GCP_BASE_URL,
+        "model": "google/gemini-2.5-flash",
+        "max_tokens": 4000,
+        "headers_fn": get_gcp_headers,
+    },
+    {
+        "name": "Qwen 3.6 (Google Cloud)",
+        "env_key": "GCP_PROJECT_ID",
+        "url": GCP_BASE_URL,
+        # Note: Check your Model Garden deployment for the exact string if this throws a 404
+        "model": "qwen/qwen3.6-35b", 
+        "max_tokens": 4000,
+        "headers_fn": get_gcp_headers,
+    },
+    {
+        "name": "Grok 4.20 (Google Cloud)",
+        "env_key": "GCP_PROJECT_ID",
+        "url": GCP_BASE_URL,
+        "model": "xai/grok-4.20", 
+        "max_tokens": 4000,
+        "headers_fn": get_gcp_headers,
+    },
+    {
+        "name": "Groq (Standard API)",
         "env_key": "GROQ_API_KEY",
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "model": "llama-3.3-70b-versatile", 
         "max_tokens": 4000,
-        "headers_fn": lambda key: {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    },
-    {
-        "name": "Cerebras",
-        "env_key": "CEREBRAS_API_KEY",
-        "url": "https://api.cerebras.ai/v1/chat/completions",
-        "model": "llama-3.3-70b",       
-        "max_tokens": 4000,
-        "headers_fn": lambda key: {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    },
-    {
-        "name": "OpenRouter",
-        "env_key": "OPENROUTER_API_KEY",
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "model": "meta-llama/llama-3.3-70b-instruct:free", 
-        "max_tokens": 4000,
-        "headers_fn": lambda key: {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    },
-    {
-        "name": "Gemini",
-        "env_key": "GEMINI_API_KEY",
-        "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",  
-        "model": "gemini-2.0-flash",
-        "max_tokens": 4000,
-        "headers_fn": lambda key: {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    },
+        "headers_fn": get_standard_headers,
+    }
 ]
-
 
 # ---------------------------------------------------------------------------
 # Generic OpenAI-compatible caller
 # ---------------------------------------------------------------------------
+def _call_openai_compatible(provider: dict, api_key: str, system_prompt: str, user_prompt: str, temperature: float) -> str:
+    headers = provider["headers_fn"](api_key)
+    if not headers:
+        raise Exception("Failed to generate headers (Missing Token/Key)")
 
-def _call_openai_compatible(
-    provider: dict,
-    api_key: str,
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float,
-) -> str:
-    """Call any OpenAI-compatible endpoint and return stripped content."""
     response = requests.post(
         provider["url"],
-        headers=provider["headers_fn"](api_key),
+        headers=headers,
         json={
             "model": provider["model"],
             "temperature": temperature,
@@ -106,52 +113,35 @@ def _call_openai_compatible(
         timeout=60,
     )
 
-    # Detect HTML error pages (e.g., Cloudflare blocks or gateway timeouts)
-    if "text/html" in response.headers.get("content-type", ""):
-        raise Exception(f"Returned HTML error (HTTP {response.status_code})")
-
     if not response.ok:
-        raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+        raise Exception(f"HTTP {response.status_code}: {response.text[:250]}")
 
     data = response.json()
     choices = data.get("choices", [])
     if not choices:
         raise Exception("Returned empty choices array")
 
-    first = choices[0]
-    finish_reason = str(first.get("finish_reason", "")).lower()
-    content = (first.get("message") or {}).get("content")
-
-    if not content and finish_reason == "length":
-        raise Exception("Hit max_tokens with no content (finish_reason=length)")
-
-    if not content:
-        raise Exception(f"Returned empty content (finish_reason={finish_reason})")
-
-    return content.strip()
-
+    return (choices[0].get("message") or {}).get("content", "").strip()
 
 # ---------------------------------------------------------------------------
 # Main router
 # ---------------------------------------------------------------------------
-
 def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
     """Try each provider in order. Returns the first successful response."""
     errors = []
 
     for provider in PROVIDERS:
-        # 支持通过逗号分隔传入多个备用 Key (e.g. KEY1,KEY2)
+        # For GCP models, we just need the environment variable to exist to trigger it
         keys = [k.strip() for k in os.getenv(provider["env_key"], "").split(",") if k.strip()]
 
         if not keys:
-            print(f"[LLM Router] Skipping {provider['name']} — no API key in .env")
+            print(f"[LLM Router] Skipping {provider['name']} — env variable {provider['env_key']} not found.")
             continue
 
         for idx, api_key in enumerate(keys):
             try:
-                print(f"[LLM Router] Trying {provider['name']} (Key {idx + 1}/{len(keys)})...")
-
-                # 直接调用合并后的核心请求函数
+                print(f"[LLM Router] Trying {provider['name']}...")
+                
                 content = _call_openai_compatible(
                     provider=provider,
                     api_key=api_key,
@@ -160,16 +150,13 @@ def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.2) -> 
                     temperature=temperature
                 )
 
-                print(f"[LLM Router] ✅ {provider['name']} succeeded with Key {idx + 1}")
+                print(f"[LLM Router] ✅ {provider['name']} succeeded!")
                 return content
 
             except Exception as exc:
-                err_msg = f"{provider['name']} (Key {idx + 1}): {exc}"
+                err_msg = f"{provider['name']}: {exc}"
                 errors.append(err_msg)
                 print(f"[LLM Router] ❌ {err_msg}")
-                
-                # 容错缓冲，避免请求过快被连续拒绝
                 time.sleep(1)
 
-    # 如果所有 Provider 和 Key 全都挂了，抛出汇总异常
     raise Exception("All LLM providers failed.\n" + "\n".join(errors))

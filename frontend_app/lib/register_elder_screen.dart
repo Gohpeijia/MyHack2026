@@ -1,6 +1,5 @@
-
 import 'package:flutter/material.dart';
-import 'elder_database_service.dart'; // This links to your database logic file
+import 'elder_database_service.dart'; // Fixed path to the database logic file
 
 class RegisterElderScreen extends StatefulWidget {
   const RegisterElderScreen({super.key});
@@ -20,6 +19,16 @@ class _RegisterElderScreenState extends State<RegisterElderScreen> {
   final TextEditingController _conditionController = TextEditingController();
 
   bool _isLoading = false;
+
+  @override
+  void dispose() {
+    // Clean up controllers when the widget is disposed to prevent memory leaks
+    _nameController.dispose();
+    _ageController.dispose();
+    _phoneController.dispose();
+    _conditionController.dispose();
+    super.dispose();
+  }
 
   void _saveToFirebase() async {
     if (_nameController.text.isEmpty || _phoneController.text.isEmpty) {
@@ -54,6 +63,10 @@ class _RegisterElderScreenState extends State<RegisterElderScreen> {
         );
       }
 
+      // --- ASYNC GAP GUARD ---
+      // If the user left the screen while Firebase was saving, stop here and don't call context.
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Success! Check your Firebase Console.')),
       );
@@ -64,11 +77,17 @@ class _RegisterElderScreenState extends State<RegisterElderScreen> {
       _phoneController.clear();
       _conditionController.clear();
     } catch (e) {
+      // --- ASYNC GAP GUARD FOR ERROR ---
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
     } finally {
-      setState(() => _isLoading = false);
+      // --- ASYNC GAP GUARD FOR LOADING STATE ---
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

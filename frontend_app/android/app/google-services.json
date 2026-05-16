@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "53311460557",
+    "firebase_url": "https://myhack-55a43-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "myhack-55a43",
+    "storage_bucket": "myhack-55a43.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:53311460557:android:97470527a45f2ca59e0584",
+        "android_client_info": {
+          "package_name": "com.example.frontend_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "53311460557-dv19c185vreb48oblk1v8tpefuh5p83q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9ohH4-AXj-nfh8EEI0F7id27zWRNaAqg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "53311460557-dv19c185vreb48oblk1v8tpefuh5p83q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "53311460557-q1b84adm70c9kf9ipk08eqtkjov12dh0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.frontendApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
