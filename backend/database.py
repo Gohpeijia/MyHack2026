@@ -1,28 +1,19 @@
-import os
-import asyncio
-import libsql_client
-from dotenv import load_dotenv
+# database.py
+import firebase_admin
+from firebase_admin import credentials, firestore
 
-load_dotenv()
+# 1. Path to your Firebase service account JSON file (Download this from Firebase Console)
+CREDENTIALS_PATH = "firebase-adminsdk.json"
 
-url = os.getenv("TURSO_DATABASE_URL")
-auth_token = os.getenv("TURSO_AUTH_TOKEN")
+try:
+    # 2. initialize Firebase Admin SDK
+    cred = credentials.Certificate(CREDENTIALS_PATH)
+    firebase_admin.initialize_app(cred)
+    
+    # 3. Connect to Firestore database
+    db = firestore.client()
+    print("✅ Successful to connect Firebase Firestore database!")
 
-async def connect_db():
-    try:
-        # Initialize the Turso connection
-        client = libsql_client.create_client(url=url, auth_token=auth_token)
-        print("✅ Successfully connected to Turso!")
-        
-        # Run a test query
-        result = await client.execute("SELECT 1;")
-        print("Query result:", result.rows)
-        
-    except Exception as e:
-        print(f"❌ Turso connection failed: {e}")
-    finally:
-        if 'client' in locals():
-            await client.close()
-
-# Run the async function
-asyncio.run(connect_db())
+except Exception as e:
+    print(f"❌ Firebase connect failed: {e}")
+    db = None  # Set db to None if connection fails, handle this in your endpoints later
