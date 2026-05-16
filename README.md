@@ -1,4 +1,4 @@
-# Find my Amar 
+# Find my Ah ma 
 
 **An AI-powered Elderly Care Relationship Operating System**
 
@@ -6,7 +6,7 @@
 
 ---
 
-## What is  Find my Amar ?
+## What is  Find my Ah ma ?
 
  Track my Amar is a mobile app that helps families stay connected to their elderly loved ones. It combines a live location tracker, smart reminders, emergency contacts, and an AI alert engine into one simple interface — built for both caregivers and the elderly.
 

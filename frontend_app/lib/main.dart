@@ -34,7 +34,7 @@ class CareConnectApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CareConnect',
+      title: 'Find my Ah Ma',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

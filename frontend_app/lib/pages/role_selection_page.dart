@@ -33,7 +33,7 @@ class RoleSelectionPage extends StatelessWidget {
               const SizedBox(height: 24),
 
               const Text(
-                'CareConnect',
+                'Find my Ah Ma',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
