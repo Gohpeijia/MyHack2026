@@ -3,6 +3,10 @@ import os
 import jwt
 
 from fastapi.security import OAuth2PasswordBearer
+# Import your separated router
+from mapdetection import router as map_router
+from schedule import router as schedule_router
+from ai_routes import router as ai_router
 from auth import router as auth_router, SECRET_KEY, ALGORITHM
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request
@@ -18,8 +22,7 @@ from slowapi.errors import RateLimitExceeded
 # Import your multi-provider fallback router
 from llm_router import call_llm
 
-# Import your separated map detection router
-from mapdetection import router as map_router
+
 
 # ---------------------------------------------------------------------------
 # 1. Initialize Application & Rate Limiter
@@ -48,15 +51,13 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 app.include_router(map_router)
 app.include_router(auth_router)
+app.include_router(schedule_router)
+app.include_router(ai_router)
 
 # ---------------------------------------------------------------------------
 # Data Models (Schemas for non-map features)
 # Note: Map payload schemas (ElderLocationPayload, etc.) are in mapdetection.py
 # ---------------------------------------------------------------------------
-class VoiceLogRequest(BaseModel):
-    elder_id: str
-    raw_text: str = Field(..., description="The spoken update from the caregiver/volunteer")
-
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -126,42 +127,6 @@ def require_admin_role(current_user: dict = Depends(get_current_user)):
 async def root():
     return {"message": "CareOS Backend is running securely!"}
 
-@app.post("/api/care/voice-log")
-@limiter.limit("5/minute") # Prevents malicious looping scripts from burning your LLM wallet
-async def process_caregiver_voice_log(
-    request: Request, 
-    payload: VoiceLogRequest, 
-    user: dict = Depends(get_current_user)
-):
-    """
-    Takes an unstructured vocal text note from a caregiver or volunteer,
-    runs it through the LLM fallback chain, and outputs structured updates.
-    """
-    system_prompt = (
-        "You are the core logic engine of an Elderly Care Operating System.\n"
-        "Analyze the caregiver's update and output raw JSON with these exact keys:\n"
-        "- health_status_updated (boolean)\n"
-        "- medication_administered (boolean)\n"
-        "- risk_level (Low, Medium, High)\n"
-        "- extracted_notes (concise summary for the family dashboard)"
-    )
-    
-    user_prompt = f"Caregiver Update for Elder {payload.elder_id}: '{payload.raw_text}'"
-    
-    try:
-        # Calls your robust router logic safely inside the backend container
-        ai_analysis_json = call_llm(system_prompt, user_prompt, temperature=0.1)
-        return {
-            "status": "success",
-            "elder_id": payload.elder_id,
-            "analysis": ai_analysis_json
-        }
-    except Exception as e:
-        # Mask raw server trace details from bad actors
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The AI processing framework encountered an unexpected delay. Planners notified."
-        )
 
 # ---------------------------------------------------------------------------
 # Admin Protected Operations
