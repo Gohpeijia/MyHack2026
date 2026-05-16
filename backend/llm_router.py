@@ -24,6 +24,7 @@ import time
 import requests
 from typing import Optional
 from dotenv import load_dotenv
+
 load_dotenv() 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +53,7 @@ PROVIDERS = [
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         },
-        },
+    },
     {
         "name": "OpenRouter",
         "env_key": "OPENROUTER_API_KEY",
@@ -66,7 +67,7 @@ PROVIDERS = [
     },
     {
         "name": "Gemini",
-       "env_key": "GEMINI_API_KEY",
+        "env_key": "GEMINI_API_KEY",
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",  
         "model": "gemini-2.0-flash",
         "max_tokens": 4000,
@@ -88,8 +89,8 @@ def _call_openai_compatible(
     system_prompt: str,
     user_prompt: str,
     temperature: float,
-) -> Optional[str]:
-    """Call any OpenAI-compatible endpoint."""
+) -> str:
+    """Call any OpenAI-compatible endpoint and return stripped content."""
     response = requests.post(
         provider["url"],
         headers=provider["headers_fn"](api_key),
@@ -105,29 +106,27 @@ def _call_openai_compatible(
         timeout=60,
     )
 
-    # Detect HTML error pages
+    # Detect HTML error pages (e.g., Cloudflare blocks or gateway timeouts)
     if "text/html" in response.headers.get("content-type", ""):
-        raise Exception(f"{provider['name']} returned HTML error (HTTP {response.status_code})")
+        raise Exception(f"Returned HTML error (HTTP {response.status_code})")
 
     if not response.ok:
-        raise Exception(f"{provider['name']} HTTP {response.status_code}: {response.text[:200]}")
+        raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
 
     data = response.json()
-
-    # Check finish_reason — skip if cut off with no content
     choices = data.get("choices", [])
     if not choices:
-        raise Exception(f"{provider['name']} returned no choices")
+        raise Exception("Returned empty choices array")
 
     first = choices[0]
     finish_reason = str(first.get("finish_reason", "")).lower()
     content = (first.get("message") or {}).get("content")
 
     if not content and finish_reason == "length":
-        raise Exception(f"{provider['name']} hit max_tokens with no content (finish_reason=length)")
+        raise Exception("Hit max_tokens with no content (finish_reason=length)")
 
     if not content:
-        raise Exception(f"{provider['name']} returned empty content (finish_reason={finish_reason})")
+        raise Exception(f"Returned empty content (finish_reason={finish_reason})")
 
     return content.strip()
 
@@ -135,12 +134,13 @@ def _call_openai_compatible(
 # ---------------------------------------------------------------------------
 # Main router
 # ---------------------------------------------------------------------------
+
 def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
     """Try each provider in order. Returns the first successful response."""
     errors = []
 
     for provider in PROVIDERS:
-        # Get keys and split by comma to support multiple fallback keys per provider
+        # 支持通过逗号分隔传入多个备用 Key (e.g. KEY1,KEY2)
         keys = [k.strip() for k in os.getenv(provider["env_key"], "").split(",") if k.strip()]
 
         if not keys:
@@ -151,46 +151,25 @@ def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.2) -> 
             try:
                 print(f"[LLM Router] Trying {provider['name']} (Key {idx + 1}/{len(keys)})...")
 
-                headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    **provider.get("extra_headers", {})
-                }
-
-                payload = {
-                    "model": provider["model"],
-                    "temperature": temperature,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ]
-                }
-
-                response = requests.post(provider["url"], headers=headers, json=payload, timeout=60)
-                
-                # Catch HTML pages or bad status codes immediately
-                if "text/html" in response.headers.get("content-type", ""):
-                    raise ValueError(f"Returned HTML error (HTTP {response.status_code})")
-                response.raise_for_status()
-
-                # Parse JSON and extract content
-                data = response.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content")
-                finish_reason = data.get("choices", [{}])[0].get("finish_reason")
-
-                if not content:
-                    raise ValueError(f"Empty content returned (finish_reason={finish_reason})")
+                # 直接调用合并后的核心请求函数
+                content = _call_openai_compatible(
+                    provider=provider,
+                    api_key=api_key,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature
+                )
 
                 print(f"[LLM Router] ✅ {provider['name']} succeeded with Key {idx + 1}")
-                return content.strip()
+                return content
 
             except Exception as exc:
                 err_msg = f"{provider['name']} (Key {idx + 1}): {exc}"
                 errors.append(err_msg)
                 print(f"[LLM Router] ❌ {err_msg}")
                 
-                # Short wait before trying next key or provider
+                # 容错缓冲，避免请求过快被连续拒绝
                 time.sleep(1)
 
-    # All providers and keys exhausted
+    # 如果所有 Provider 和 Key 全都挂了，抛出汇总异常
     raise Exception("All LLM providers failed.\n" + "\n".join(errors))
