@@ -1,18 +1,59 @@
 from llm_router import call_llm
 import json 
+import requests
+import os
+import re
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
+
+def get_distance_matrix(origin_lat, origin_lng, dest_lat, dest_lng, api_key):
+    """
+    Calculates real-world distance and travel time using Google Maps API.
+    """
+    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
+    params = {
+        "origins": f"{origin_lat},{origin_lng}",
+        "destinations": f"{dest_lat},{dest_lng}",
+        "mode": "walking",  # Can change to 'driving' if needed
+        "key": api_key
+    }
+    try:
+        response = requests.get(url, params=params).json()
+        if response.get("status") == "OK":
+            element = response["rows"][0]["elements"][0]
+            if element.get("status") == "OK":
+                return {
+                    "distance_text": element["distance"]["text"],       # e.g., "4.2 km"
+                    "distance_meters": element["distance"]["value"],    # e.g., 4200
+                    "duration_text": element["duration"]["text"]        # e.g., "52 mins"
+                }
+    except Exception as e:
+        print(f"Google Maps API Error: {e}")
+    return None
+
 def _parse(text: str) -> dict: 
-    text = text.strip()# Removes any additional spacing 
-    if text.startswith("```"):
-        text = text.split("```")[1] 
-        if text.startswith("json"): # removes any formatting from the AI's Response 
-            text = text[4:]
-    return json.loads(text.strip())# adds the cleaned text into a python dictionary
+    text = text.strip()
+    
+    
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        text = match.group(0)
+            
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {
+            "status": "error",
+            "message": "Failed to parse system payload response.",
+            "flag": True
+        }
     
 def check_for_alerts(elder: dict, activities: list) -> dict: 
     system_prompt = "You are a wellbeing monitor for elderly Malaysians. Return only valid JSON." # tells the AI it's role
     user_prompt = f"""
 Elder: {json.dumps(elder, indent =4)} 
-Today's activities: {json.dumps(activities, indent =4)} # same information passing but for the activities
+Today's activities: {json.dumps(activities, indent =4)} 
 
 Raise a flag for any skipped or unchecked activities. 
 Return ONLY JSON: 
@@ -115,7 +156,7 @@ Return ONLY JSON:
       "status": "completed"
     }}
   ],
-  "notify_family": "true or false",
+  "notify_family": "true_or_false",
   "family_message": "Short update to send to family"
 }}
 """
@@ -125,14 +166,61 @@ Return ONLY JSON:
 def check_location(elder: dict, location_history: list) -> dict:
     system_prompt = (
         "You are a location monitor for elderly Malaysians. "
-        "Return only valid JSON, no extra text."
+        "Return only valid JSON, no extra text. "
+        "Example Output Format:\n"
+        "{\n"
+        "  \"status\": \"normal\",\n"
+        "  \"last_known_location\": \"Taman Jaya Park\",\n"
+        "  \"is_at_home\": \"false\",\n"
+        "  \"time_since_last_ping\": \"30 minutes\",\n"
+        "  \"flag\": \"false\",\n"
+        "  \"message\": \"Elder is taking a normal walk nearby.\",\n"
+        "  \"reason\": \"\"\n"
+        "}"
     )
+
+    # Secure your list slicing safely:
+    if not location_history:
+        return {
+            "status": "error",
+            "message": "No location coordinates provided.",
+            "flag": False
+        }
+    
+    latest_ping = location_history[-1]
+
+    # 1. Get the latest ping coordinate from history
+    latest_ping = location_history[-1] if location_history else {}
+    current_lat = latest_ping.get("lat")
+    current_lng = latest_ping.get("lng")
+    
+    # 2. Get home coordinates (assuming you add 'home_lat'/'home_lng' to your elder profile)
+    home_lat = elder.get("home_lat", 3.1073) 
+    home_lng = elder.get("home_lng", 101.6067)
+    
+    # 3. Call Google Maps API to get the real distance
+    GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+    
+    if not GOOGLE_MAPS_API_KEY:
+        return {
+            "status": "error",
+            "message": "Google Maps API Key is missing from environment.",
+            "flag": False
+        }
+    
+    geo_data = get_distance_matrix(home_lat, home_lng, current_lat, current_lng, GOOGLE_MAPS_API_KEY)   
+    
+    # 4. Supply the clear-cut distance calculations straight to the AI prompt
+    distance_info = "Unknown"
+    if geo_data:
+        distance_info = f"{geo_data['distance_text']} away ({geo_data['duration_text']} walk from home)"
 
     user_prompt = f"""
 Elder profile:
 {json.dumps(elder, indent=4)}
 
 The elder's home address is: {elder.get("location", "unknown")}
+Calculated distance from home for the latest ping: {distance_info}
 
 Location pings (sent every 30 minutes, includes timestamp and place):
 {json.dumps(location_history, indent=4)}
@@ -144,15 +232,15 @@ Your job:
    - Daytime (8am-5pm): normal activity, allow up to 3 hours before flagging
    - Evening (5pm-9pm): likely leisure, allow up to 2 hours before flagging
    - Night (9pm onwards): flag immediately if outside home
-3. If the elder is somewhere unexpected or very far from home, flag it regardless of time.
+3. If the calculated distance shows the elder is very far from home (e.g., more than 5-10 km away), flag it regardless of time.
 
 Return ONLY JSON:
 {{
   "status": "normal | concern | alert",
   "last_known_location": "place name from most recent ping",
-  "is_at_home": "true or false",
+  "is_at_home": "true_or_false",
   "time_since_last_ping": "e.g. 30 minutes",
-  "flag": "true or false",
+  "flag": "true",
   "message": "Short plain English update for the family",
   "reason": "Only fill this if flag is true, explain why"
 }}

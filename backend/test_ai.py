@@ -36,13 +36,12 @@ medicine_times = [
     {"medicine": "Cholesterol pill", "time": "21:00", "taken": False},
 ]
 
+
 location_history = [
     {"timestamp": "08:00", "place": "Home, Petaling Jaya", "lat": 3.1073, "lng": 101.6067},
-    {"timestamp": "08:30", "place": "Taman Jaya Park, PJ", "lat": 3.1080, "lng": 101.6100},
-    {"timestamp": "09:00", "place": "Taman Jaya Park, PJ", "lat": 3.1081, "lng": 101.6101},
-    {"timestamp": "09:30", "place": "Taman Jaya Park, PJ", "lat": 3.1081, "lng": 101.6101},
-    {"timestamp": "10:00", "place": "Taman Jaya Park, PJ", "lat": 3.1081, "lng": 101.6101},
+    {"timestamp": "10:00", "place": "KLIA Airport Terminal 1", "lat": 2.7456, "lng": 101.7009}, # Far away!
 ]
+
 # --- Tests ---
 
 print("\n========== TEST 1: check_for_alerts ==========")
