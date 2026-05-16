@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../widget/role_card.dart';
+// Update this import to match your actual project structure
+import '../widget/role_card.dart';
 
 class RoleSelectionPage extends StatelessWidget {
   const RoleSelectionPage({super.key});
@@ -15,6 +16,21 @@ class RoleSelectionPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Spacer(),
+
+              // ── Logo / brand ────────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4A90D9).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.favorite_rounded,
+                  color: Color(0xFF4A90D9),
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 24),
 
               const Text(
                 'CareConnect',
@@ -37,6 +53,7 @@ class RoleSelectionPage extends StatelessWidget {
 
               const Spacer(),
 
+              // ── Elderly card ────────────────────────────────────────────────
               RoleCard(
                 icon: Icons.elderly,
                 label: 'I am the Elderly',
@@ -47,6 +64,7 @@ class RoleSelectionPage extends StatelessWidget {
 
               const SizedBox(height: 20),
 
+              // ── Caregiver card ──────────────────────────────────────────────
               RoleCard(
                 icon: Icons.favorite_rounded,
                 label: 'I am the Caregiver',
@@ -59,10 +77,7 @@ class RoleSelectionPage extends StatelessWidget {
 
               const Text(
                 'Your connection is private and secure.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFFAAAAAA),
-                ),
+                style: TextStyle(fontSize: 13, color: Color(0xFFAAAAAA)),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),

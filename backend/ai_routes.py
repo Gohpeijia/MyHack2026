@@ -48,8 +48,8 @@ async def process_voice_log(payload: VoiceLogPayload):
 async def alerts(elder_id: str):
     elder = get_elder(elder_id)
     activities = get_activities(elder_id)
-    medicine = get_medicine(elder_id)
-    return check_for_alerts(elder, activities, medicine)
+    # Removed 'medicine' to match AI_Services.py signature
+    return check_for_alerts(elder, activities)
 
 @router.get("/schedule/{elder_id}")
 async def schedule(elder_id: str):
@@ -58,7 +58,6 @@ async def schedule(elder_id: str):
     medicine = get_medicine(elder_id)
     return format_daily_schedule(elder, activities, medicine)
 
-<<<<<<< HEAD
 @router.get("/location/{elder_id}")
 async def location(elder_id: str):
     elder = get_elder(elder_id)
@@ -82,12 +81,13 @@ class ReplacementPayload(BaseModel):
 
 @router.post("/replacement")
 async def replacement(payload: ReplacementPayload):
+    # 1. Fetch Elder Profile
     elder = get_elder(payload.elder_id)
-    return find_replacement(elder, payload.cancelled_contact, payload.available_contacts)
-=======
+    
+    # 2. Ask AI to find a replacement
     try:
-        print(f"🚨 [AI Service] Running Emergency Ecosystem Check for {payload.elder_id}...")
-        ai_decision = emergency_check(elder_profile, mock_activities, mock_contacts)
+        print(f"🚨 [AI Service] Finding replacement caregiver for {payload.elder_id}...")
+        ai_decision = find_replacement(elder, payload.cancelled_contact, payload.available_contacts)
         
         return {
             "status": "success",
@@ -95,10 +95,3 @@ async def replacement(payload: ReplacementPayload):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Processing Failed: {str(e)}")
-    
-
-
-
-
-    
->>>>>>> 64327b71642b412a9de3e0e85c4e104414d16986

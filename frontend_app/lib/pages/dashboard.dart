@@ -36,11 +36,13 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void loadAlerts() async {
-    final data = await getAlerts("elder_001");
+  final data = await getAlerts("elder_001");
+  if (mounted) {  // ← add this check
     setState(() {
       alertData = data;
     });
   }
+}
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -224,7 +226,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           const Text(
                             'Dashboard',
                             style: TextStyle(
-                              fontSize: 28,
+                              fontSize: 25,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF1A1A2E),
                             ),

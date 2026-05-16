@@ -11,7 +11,7 @@ import 'map_web.dart' if (dart.library.io) 'map_native.dart';
 class SavedPlace {
   final String id;
   final String label;
-  final String description; // 🔼 Added description field
+  final String description; 
   final String searchedAddress;
   final LatLng latLng;
   final IconData icon;
@@ -148,7 +148,7 @@ class _MapPageState extends State<MapPage> {
   // ─── Dialog: Type Address & Save Place ─────────────────────────────────────
   void _showAddPlaceDialog() {
     final labelCtrl = TextEditingController();
-    final descCtrl = TextEditingController(); // 🔼 Description controller
+    final descCtrl = TextEditingController(); 
     final addressCtrl = TextEditingController();
     
     bool isSearchingLocation = false;
@@ -308,7 +308,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // ─── BOTTOM SHEET FOR PLACE DETAILS ────────────────────────────────────────
+  // ─── NEW: Bottom Sheet for Place Details ───────────────────────────────────
   void _showPlaceDetails(SavedPlace place) {
     showModalBottomSheet(
       context: context,
@@ -378,21 +378,18 @@ class _MapPageState extends State<MapPage> {
               
               const SizedBox(height: 28),
 
-              // Action Buttons Panel (Directions removed)
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        side: BorderSide(color: Colors.grey[300]!)
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Close', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                    ),
+              // Action Buttons - Full Width Close Button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    side: BorderSide(color: Colors.grey[300]!)
                   ),
-                ],
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                ),
               )
             ],
           ),
@@ -472,107 +469,105 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          _AddressBar(address: _addressLine, loading: _loading),
-          Expanded(
-            child: Stack(
-              children: [
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentLatLng,
-                    initialZoom: 15.5,
-                    onPositionChanged: (_, hasGesture) {
-                      if (hasGesture && _followUser) {
-                        setState(() => _followUser = false);
-                      }
-                    },
+    return Column(
+      children: [
+        _AddressBar(address: _addressLine, loading: _loading),
+        Expanded(
+          child: Stack(
+            children: [
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _currentLatLng,
+                  initialZoom: 15.5,
+                  onPositionChanged: (_, hasGesture) {
+                    if (hasGesture && _followUser) {
+                      setState(() => _followUser = false);
+                    }
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.careconnect.app',
+                    maxZoom: 19,
                   ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.careconnect.app',
-                      maxZoom: 19,
-                    ),
-                    
-                    MarkerLayer(
-                      markers: [
-                        // Live location user pulsing dot
-                        Marker(
-                          point: _currentLatLng,
-                          width: 60,
-                          height: 60,
-                          child: const _PulsingMarker(),
-                        ),
-                        
-                        // 🔼 Map pinned saved markers
-                        ..._savedPlaces.map((place) {
-                          return Marker(
-                            point: place.latLng,
-                            width: 50,  
-                            height: 50,
-                            child: GestureDetector(
-                              onTap: () => _showPlaceDetails(place), 
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 2))],
-                                ),
-                                child: Icon(place.icon, color: place.color, size: 26),
+                  
+                  MarkerLayer(
+                    markers: [
+                      // Live location user pulsing dot
+                      Marker(
+                        point: _currentLatLng,
+                        width: 60,
+                        height: 60,
+                        child: const _PulsingMarker(),
+                      ),
+                      
+                      // Map pinned saved markers
+                      ..._savedPlaces.map((place) {
+                        return Marker(
+                          point: place.latLng,
+                          width: 50,  
+                          height: 50,
+                          child: GestureDetector(
+                            onTap: () => _showPlaceDetails(place), 
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 2))],
                               ),
+                              child: Icon(place.icon, color: place.color, size: 26),
                             ),
-                          );
-                        }),
-                      ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ],
+              ),
+
+              // Control Menu Layout Panel
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Column(
+                  children: [
+                    _MapButton(
+                      icon: Icons.add_location_alt_rounded,
+                      onTap: _showAddPlaceDialog,
+                      tooltip: 'Type and add place',
+                      color: Colors.white,
+                      iconColor: const Color(0xFF4A90D9),
+                    ),
+                    const SizedBox(height: 10),
+                    _MapButton(
+                      icon: Icons.folder_special_rounded,
+                      onTap: _showSavedPlacesSheet,
+                      tooltip: 'Open saved directory',
+                      color: Colors.white,
+                      iconColor: const Color(0xFF1A1A2E),
                     ),
                   ],
                 ),
+              ),
 
-                // Control Menu Layout Panel
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: Column(
-                    children: [
-                      _MapButton(
-                        icon: Icons.add_location_alt_rounded,
-                        onTap: _showAddPlaceDialog,
-                        tooltip: 'Type and add place',
-                        color: Colors.white,
-                        iconColor: const Color(0xFF4A90D9),
-                      ),
-                      const SizedBox(height: 10),
-                      _MapButton(
-                        icon: Icons.folder_special_rounded,
-                        onTap: _showSavedPlacesSheet,
-                        tooltip: 'Open saved directory',
-                        color: Colors.white,
-                        iconColor: const Color(0xFF1A1A2E),
-                      ),
-                    ],
-                  ),
+              // Device geolocation re-center FAB
+              Positioned(
+                bottom: 20,
+                right: 16,
+                child: _MapButton(
+                  icon: _followUser ? Icons.my_location_rounded : Icons.location_searching_rounded,
+                  onTap: _centerOnUser,
+                  tooltip: 'My location',
+                  color: _followUser ? const Color(0xFF4A90D9) : Colors.white,
+                  iconColor: _followUser ? Colors.white : const Color(0xFF4A90D9),
                 ),
-
-                // Device geolocation re-center FAB
-                Positioned(
-                  bottom: 20,
-                  right: 16,
-                  child: _MapButton(
-                    icon: _followUser ? Icons.my_location_rounded : Icons.location_searching_rounded,
-                    onTap: _centerOnUser,
-                    tooltip: 'My location',
-                    color: _followUser ? const Color(0xFF4A90D9) : Colors.white,
-                    iconColor: _followUser ? Colors.white : const Color(0xFF4A90D9),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

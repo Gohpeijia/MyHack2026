@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart'; // Future database import
+import 'package:firebase_database/firebase_database.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class ElderlyQRPage extends StatefulWidget {
@@ -11,12 +11,11 @@ class ElderlyQRPage extends StatefulWidget {
 }
 
 class _ElderlyQRPageState extends State<ElderlyQRPage> {
-  // // Future Firebase setup variable:
-  // final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
-  String? _token;
+  final DatabaseReference _db = FirebaseDatabase.instance.ref();
+
+  String? _sessionId;
   bool _loading = true;
-  Timer? _mockConnectionTimer;
+  StreamSubscription<DatabaseEvent>? _sessionSub;
 
   @override
   void initState() {
@@ -26,38 +25,48 @@ class _ElderlyQRPageState extends State<ElderlyQRPage> {
 
   @override
   void dispose() {
-    _mockConnectionTimer?.cancel();
+    _sessionSub?.cancel();
+    // Clean up the session node if the elderly leaves before pairing
+    if (_sessionId != null) {
+      _db.child('sessions/$_sessionId').remove();
+    }
     super.dispose();
   }
 
   Future<void> _createSession() async {
-    // Simulate network delay for creating a session token
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    if (mounted) {
-      setState(() {
-        // Generates a mock session ID using the current timestamp
-        _token = 'mock-session-${DateTime.now().millisecondsSinceEpoch}';
-        _loading = false;
-      });
+    // Push a new session node — Firebase generates a unique key
+    final sessionRef = _db.child('sessions').push();
+    _sessionId = sessionRef.key;
 
-      // --- FIREBASE IMPLEMENTATION WILL REPLACE THIS BLOCK ---
-      // Real flow: Listen to document changes in Firestore collection:
-      // _firestore.collection('connections').doc(_token).snapshots().listen((snapshot) {
-      //   if (snapshot.exists && snapshot.data()?['status'] == 'connected') {
-      //     Navigator.pushReplacementNamed(context, '/elderly_home');
-      //   }
-      // });
-      // ------------------------------------------------------
+    await sessionRef.set({
+      'status': 'waiting',        // caregiver will change this to 'connected'
+      'createdAt': ServerValue.timestamp,
+    });
 
-      // Local UI Test Simulation: Auto-advances to home after 8 seconds 
-      // so you can see what happens when a caregiver finishes scanning!
-      _mockConnectionTimer = Timer(const Duration(seconds: 8), () {
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/elderly_home');
-        }
-      });
-    }
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    // ── Listen for caregiver login completion ─────────────────────────────────
+    _sessionSub = sessionRef.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data == null) return;
+
+      final status = data['status'] as String?;
+
+      if (status == 'connected' && mounted) {
+        _sessionSub?.cancel();
+        // Both sides go home — elderly side is NOT a caregiver
+        Navigator.pushReplacementNamed(
+          context,
+          '/home',
+          arguments: {
+            'isCaregiver': false,
+            'sessionId': _sessionId,
+            'caregiverEmail': data['caregiverEmail'] ?? '',
+          },
+        );
+      }
+    });
   }
 
   @override
@@ -69,7 +78,13 @@ class _ElderlyQRPageState extends State<ElderlyQRPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A2E)),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            _sessionSub?.cancel();
+            if (_sessionId != null) {
+              _db.child('sessions/$_sessionId').remove();
+            }
+            Navigator.pop(context);
+          },
         ),
       ),
       body: SafeArea(
@@ -79,6 +94,7 @@ class _ElderlyQRPageState extends State<ElderlyQRPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(),
+
               const Text(
                 'Your QR Code',
                 style: TextStyle(
@@ -94,7 +110,9 @@ class _ElderlyQRPageState extends State<ElderlyQRPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
-              _loading
+
+              // ── QR Code or loader ──────────────────────────────────────────
+              _loading || _sessionId == null
                   ? const CircularProgressIndicator(color: Color(0xFF4A90D9))
                   : Container(
                       padding: const EdgeInsets.all(20),
@@ -109,17 +127,37 @@ class _ElderlyQRPageState extends State<ElderlyQRPage> {
                           ),
                         ],
                       ),
+                      // The QR encodes the session ID so the caregiver's
+                      // scanner knows which Firebase node to update
                       child: QrImageView(
-                        data: _token!,
+                        data: _sessionId!,
                         version: QrVersions.auto,
                         size: 220,
                       ),
                     ),
+
               const SizedBox(height: 32),
-              const Text(
-                'Waiting for caregiver to scan...',
-                style: TextStyle(fontSize: 14, color: Color(0xFFAAAAAA)),
+
+              // ── Waiting indicator ──────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFAAAAAA),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Waiting for caregiver to scan...',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+                  ),
+                ],
               ),
+
               const Spacer(),
             ],
           ),
