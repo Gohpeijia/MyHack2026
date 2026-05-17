@@ -226,7 +226,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           const Text(
                             'Dashboard',
                             style: TextStyle(
-                              fontSize: 25,
+                              fontSize: 2,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF1A1A2E),
                             ),
